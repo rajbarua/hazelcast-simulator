@@ -96,26 +96,30 @@ Also contains pointers where to go next.
     - JDK 17 or newer
     - [Maven](https://maven.apache.org/download.cgi)
     - [Terraform](https://developer.hashicorp.com/terraform/downloads)
-    - [Python 3.8 or newer](https://www.python.org/downloads/)
+    - Python 3.8
     - Python3-pip
     - python3-gobject
     - rsync
 
-3. Install Python libraries:
+3. Create a virtual environment, activate it and install dependencies
 
     ```shell
-    pip3 install -U ansible pyyaml matplotlib signal-processing-algorithms pandas plotly boto3
+    $ cd hazelcast-simulator
+    $ # python 3.11 is the version that is currently supported
+    $ python3.11 -m venv venv 
+    $ # activate the virtual environment appropriate to your shell, e.g. in bash:
+    $ source ./venv/bin/activate
+    $ pip install -r requirements.txt
     ```
 
-   `signal-processing-algorithms` is only needed when you are going to do performance regression testing. The library is
-   used for change point detection.
+`signal-processing-algorithms` is only needed when you are going to do performance regression testing. The library is
+used for change point detection:
 
 
 4. Build Simulator:
 
-   ```
-   cd hazelcast-simulator
-   ./build
+   ```bash
+   $ ./build
    ```
    This will automatically build the Java code, download the artifacts and prepare the simulator for usage.
 
@@ -157,7 +161,7 @@ Simulator makes use of Terraform for provisioning. After you have created a benc
 `perftest create` command, you want to edit the `inventory_plan.yaml`. This is where you can configure the
 type of instances, the number etc. The specified `cidr_block` will need to be updated to prevent conflicts.
 
-To provision the environment, you will first need to configure your AWS credentials:
+To provision the environment, you will first need to configure your AWS credentials and update team tag on inventory_plan according to the values on following [repository](https://github.com/hazelcast/aws-hazelcast-inc-iac/blob/main/README.md#aws-tagging-guidelines):
 
 In your `~/.aws/credentials` file you need something like this:
 
@@ -194,6 +198,11 @@ To install Java on the remote machines call:
    ```shell
    inventory install java
    ```
+
+Note that starting from 5.5.0-SNAPSHOT onwards, the private snapshots repository is used, so access to this repository 
+needs to be configured both locally (where simulator is being built and perftest is kicked off) and remotely (on load 
+generators and so on...).
+See [here](https://hazelcast.atlassian.net/wiki/spaces/DI/pages/5116493883/How+to+access+private+snapshot+maven+artifacts+and+docker+images) for details.
 
 You can pass a custom URL to configure the correct JVM. To get a listing of examples URL's call:
 
@@ -408,7 +417,7 @@ should be conducted in.
 
 | Property                               | Example value    | Description                                                                                                                                 |
 |----------------------------------------|------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| `name`                                 | `read_only`      | The name of the test suite (overriden by test-specific values)                                                                               |
+| `name`                                 | `read_only`      | The name of the test suite (overriden by test-specific values)                                                                              |
 | `repititions`                          | `1`              | The number of times this test suite should run (1 or more)                                                                                  |
 | `duration`                             | `300s`           | The amount of time this test suite should run for (45m, 1h, 2d, etc.)                                                                       |
 | `clients`                              | `1`              | The number of Hazelcast Clients to use in this test suite (hosted on `loadgenerator_hosts`                                                  |
@@ -425,17 +434,18 @@ should be conducted in.
 | `cooldown_seconds`                     | `0`              | The number of seconds before the end of the test to exclude in reporting (only used for report generation)                                  |
 | `license_key`                          | `your_ee_key`    | The Hazelcast Enterprise Edition license to use in your test, if using `hazelcast-enterprise5` drivers                                      |
 | `parallel`                             | `True`           | Defines whether tests should be run in parallel when multiple tests are defined within 1 suite (default false)                              |
+| `cp_priorities` | <pre>- address: internalIp<br> &nbsp;priority: 1</pre> | Defines the leadership priority of the CP Subsystem members in the cluster. Use the internal IP address of the agent(s) you wish to configure. |
 
 ### Specify test class(es) and number of threads per worker
 
 Beyond the environment parameters above, under the `test` section we define the actual tests to run. The first three
 properties shown in the above example are built-in "magic" properties of Simulator.
 
-| Property      | Example value                                      | Description                                                                                                                                                                                                                         |
-|---------------|----------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `class`       | `com.hazelcast.simulator.tests.map.IntByteMapTest` | Defines the fully qualified class name for the Simulator Test. Used to create the test class instance on the Simulator Worker. This is the only mandatory property which has to be defined.                                         |
-| `name`        | `MyByteTest`                                       | Defines a unique name for this Test. This property is only required when running multiple tests on the same test class, without it only 1 test will run per class type (as the class name is used as the name if not defined here). |
-| `threadCount` | `40`                                               | Defines how many threads are running the Test methods in parallel. In other words, defines the number of worker threads for Simulator Tests which use the `@RunWithWorker` annotation.                                              |
+| Property      | Example value                                      | Description                                                                                                                                                                                                                                                                       |
+|---------------|----------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `class`       | `com.hazelcast.simulator.tests.map.IntByteMapTest` | Defines the fully qualified class name for the Simulator Test. Used to create the test class instance on the Simulator Worker. This is the only mandatory property which has to be defined.                                                                                       |
+| `name`        | `MyByteTest`                                       | Defines a unique name for this Test. This property is only required when running multiple tests on the same test class, without it only 1 test will run per class type (as the class name is used as the name if not defined here). The tests are ordered alphabetically by name. |
+| `threadCount` | `40`                                               | Defines how many threads are running the Test methods in parallel. In other words, defines the number of worker threads for Simulator Tests which use the `@RunWithWorker` annotation.                                                                                            |
 
 > :books: For details about available values for `class`, refer to the provided classes in the [drivers](drivers)
 > directory or the [Writing a Simulator test](#writing-a-simulator-test) section.
@@ -1724,6 +1734,158 @@ but on the server side `pps_allowance_exceeded` might show 0 events/s.
 
 For any pair of instances A and B, it is advised to run the PPS test for both A and B as the server.
 This ensure a clear picture of all the PPS limits across instances.
+___
+### Injecting latencies
+
+It's often useful to simulate the effects of network latency between nodes and clients, especially in scenarios where you want to test performance across multiple data centers (DCs) or regions.
+
+Simulator provides a convenience command to inject network latencies between groups of clients and nodes using the inventory inject_latencies command. 
+This allows you to simulate different network conditions in a simple setup.
+
+There are two methods to inject latencies: 
+
+1. Basic global assignment: Assign a single latency value that will be applied bi-directionally between groups.
+2. Advanced group assignment: Assign different latency values between different groups.
+
+For both methods you must have created your machines using the `inventory apply` command and edit the generated 
+`inventory.yaml`in your project root to assign each host to a group.
+
+```yaml
+loadgenerators:
+  hosts:
+    3.121.207.133:
+      ansible_ssh_private_key_file: key
+      ansible_user: ec2-user
+      private_ip: 10.0.55.38
+      group: group1
+
+nodes:
+  hosts:
+    3.122.199.101:
+      ansible_ssh_private_key_file: key
+      ansible_user: ec2-user
+      private_ip: 10.0.44.25
+      group: group2
+```
+In this example, we have two hosts, each belonging to a different group (group1 and group2). Latencies will only be applied between different groups.
+If a host is not assigned a group, no direction of latency will be applied to that host.
+
+Note that the latency is applied to the outbound traffic from a source group to the target group.
+___
+**Method 1: Basic Global Assignment**
+
+Once your hosts are grouped, you can inject latencies by running the following command:
+
+```bash
+inventory inject_latencies --latency 10 --interface eth0 --rtt
+````
+This command will:
+
+Apply a round-trip time (RTT) latency of 10ms between hosts in different groups (e.g., between group1 and group2).
+No latency will be applied between hosts in the same group (e.g., clients or members within group1 or group2 will communicate without added delay).
+
+Explanation of Flags:
+
+`--latency`: The desired latency in milliseconds (in this case, 10ms).
+
+`--interface`: The network interface where the latency should be applied (default is eth0).
+
+`--rtt`: When set, this flag indicates the latency is a round-trip time (RTT), meaning 10ms latency will be split into 5ms each way.
+ Otherwise, 10ms will be applied in each direction.
+
+___
+**Method 2: Advanced Group Assignment**
+
+If you want to assign different latencies between different groups, you can do so by supplying a latency profile in a YAML file.
+
+Create a YAML file with the following format:
+
+
+```yaml
+latency_profiles:
+  relationships:
+    - source: group1
+      target: group2
+      latency: 5
+    - source: group2
+      target: group1
+      latency: 2
+```
+
+In this example, we have two groups (group1 and group2) with different latencies between them. 
+Communication from group1 to group2 will have a 5ms latency, while communication from group2 to group1 will have a 2ms latency.
+
+`source`: The group of nodes where the latency will be applied to outgoing traffic.
+`target`: The group of nodes to which the outgoing traffic from the source group will experience a delay.
+
+To apply these latencies, run the following command:
+
+```bash 
+inventory inject_latencies --interface eth0 --profiles latency_profile.yaml     
+````
+
+Explanation of Flags:
+
+`--interface`: The network interface where the latency should be applied (default is eth0).
+
+`--profiles`: The path to the YAML file containing the latency profiles.
+
+Note that if the latency profile file is not provided, the command will default to the basic global assignment method.
+
+
+### Removing Latencies
+
+To remove the injected latencies, run the following command:
+
+```bash 
+inventory clear_latencies
+````
+---
+
+## CP subsystem leader priority
+
+It is possible to assign leadership priority to a member or list of members in a CP group(s). This is useful when 
+you want to attribute certain behaviours to an agent in the cluster. For example, you may wish to inject a latency 
+on the leader of a CP group. Ensure the internal IP of the agent(s) are used. 
+
+Here is an example of usage in the `tests.yaml` file:
+
+```yaml
+- name: my-test
+  <<: *defaults
+  cp_priorities:
+    - address: 10.0.55.178
+      priority: 1
+    - address: 10.0.55.179
+      priority: 2
+  test:
+    - class: com.hazelcast.simulator.tests.cp.IAtomicLongTest
+      threadCount: 135
+      getProb: .8
+```
+
+Consult [Configuring Leadership Priority](https://docs.hazelcast.com/hazelcast/5.5/cp-subsystem/configuration#configuring-leadership-priority
+) for more information about the CP subsystem priority.
+
+
+## Persistence
+For Hot Restart persistence and CP Subsystem persistence, selecting on device storage for your machine will provide better performance.
+NAS solutions like AWS EBS can significantly degrade system performance due to their higher latency.
+
+Select instances with local storage, preferably NVMe SSDs, to ensure low-latency access and optimal performance.
+
+Formatting and mounting the storage device can be time-consuming. The simulator automates this process and also handles the clearing of persisted data.
+To enable automatic formatting and mounting, set the mount_volume and mount_path parameters in your tests.yaml file:
+
+```yaml
+    mount_volume: /dev/nvme1n1
+    mount_path: /dir/to/persistence
+```
+Parameters:
+
+`mount_volume:` Specifies the device to mount (e.g., /dev/nvme1n1).
+
+`mount_path:` Defines the directory where the device will be mounted (e.g., /dir/to/persistence).
 
 
 # Get Help

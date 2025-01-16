@@ -69,7 +69,9 @@ def _get_remote_repo(is_enterprise:bool, version:str):
             return "https://oss.sonatype.org/content/repositories/releases"
     else:
         if version.endswith("-SNAPSHOT"):
-            return "https://repository.hazelcast.com/snapshot"
+            # maven ignores settings.xml authentication unless forced with fully qualified remoteRepositories construct
+            # https://maven.apache.org/plugins/maven-dependency-plugin/get-mojo.html
+            return "snapshot-internal::::https://repository.hazelcast.com/snapshot-internal"
         else:
             return "https://repository.hazelcast.com/release"
 
@@ -114,7 +116,7 @@ def _get_force_download_from_maven_repo(version_spec:str):
 
 
 def _upload_hazelcast_jars(args:DriverInstallArgs, hosts):
-    driver = _get_driver(args)
+    driver = args.driver
     is_enterprise = _get_is_enterprise(driver)
     version_spec = args.test.get('version', 'maven=5.4.0')
     version = _get_version(version_spec)
@@ -139,10 +141,6 @@ def _upload_hazelcast_jars(args:DriverInstallArgs, hosts):
     info(f"Uploading Hazelcast jars: done")
 
 
-def _get_driver(args):
-    return args.test.get('driver')
-
-
 def exec(args:DriverInstallArgs):
     info("Install")
 
@@ -155,7 +153,7 @@ def exec(args:DriverInstallArgs):
     loadgenerator_hosts = args.test.get("loadgenerator_hosts")
     hosts.extend(load_hosts(inventory_path=args.inventory_path, host_pattern=loadgenerator_hosts))
 
-    upload_driver(_get_driver(args), hosts)
+    upload_driver(args.driver, hosts)
     _upload_hazelcast_jars(args, hosts)
 
     info("Install: done")

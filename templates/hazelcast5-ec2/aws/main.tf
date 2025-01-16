@@ -48,6 +48,8 @@ resource "aws_subnet" "subnet" {
     map_public_ip_on_launch = true
     tags = {
         Name = "Simulator Public Subnet ${local.settings.basename}"
+        team  = local.settings.team
+        type  = local.settings.type
     }
 }
 
@@ -60,6 +62,8 @@ resource "aws_route_table" "route_table" {
 
     tags = {
         Name = "Simulator Public Subnet Route Table ${local.settings.basename}"
+        team  = local.settings.team
+        type  = local.settings.type
     }
 }
 
@@ -86,6 +90,8 @@ resource "aws_security_group" "node-sg" {
     tags = {
         Name = "Simulator Node Security Group ${local.settings.basename}",
         Owner = local.settings.owner
+        team  = local.settings.team
+        type  = local.settings.type
     }
     
     ingress {
@@ -151,7 +157,7 @@ resource "aws_instance" "nodes" {
     instance_type           = local.settings.nodes.instance_type
     count                   = local.settings.nodes.count
     availability_zone       = local.settings.availability_zone
-    #placement_group         = aws_placement_group.cluster_placement_group.name
+    placement_group         = aws_placement_group.cluster_placement_group.name
     vpc_security_group_ids  = [ aws_security_group.node-sg.id ]
     subnet_id               = aws_subnet.subnet.id
     tenancy                 = local.settings.nodes.tenancy
@@ -161,6 +167,8 @@ resource "aws_instance" "nodes" {
         Owner = local.settings.owner
         "passthrough:ansible_ssh_private_key_file" = local.settings.keypair.private_key
         "passthrough:ansible_user" = local.settings.nodes.user
+        team  = local.settings.team
+        type  = local.settings.type
     }
 }
 
@@ -178,6 +186,8 @@ resource "aws_security_group" "loadgenerator-sg" {
     tags = {
         Name = "Simulator Load Balancer Security Group ${local.settings.basename}",
         Owner = local.settings.owner
+        team  = local.settings.team
+        type  = local.settings.type
     }
     
     ingress {
@@ -236,7 +246,7 @@ resource "aws_instance" "loadgenerators" {
     count                   = local.settings.loadgenerators.count
     subnet_id               = aws_subnet.subnet.id
     availability_zone       = local.settings.availability_zone
-    #placement_group         = aws_placement_group.cluster_placement_group.name
+    placement_group         = aws_placement_group.cluster_placement_group.name
     vpc_security_group_ids  = [ aws_security_group.loadgenerator-sg.id ]
     tenancy                 = local.settings.loadgenerators.tenancy
     tags = {
@@ -244,6 +254,8 @@ resource "aws_instance" "loadgenerators" {
         Owner = local.settings.owner
         "passthrough:ansible_ssh_private_key_file" = local.settings.keypair.private_key
         "passthrough:ansible_user" = local.settings.loadgenerators.user
+        team  = local.settings.team
+        type  = local.settings.type
     }
 } 
 
@@ -261,6 +273,8 @@ resource "aws_security_group" "mc-sg" {
     tags = {
         Name = "Simulator MC Security Group ${local.settings.basename}",
         Owner = local.settings.owner
+        team  = local.settings.team
+        type  = local.settings.type
     }
 
     ingress {
@@ -309,6 +323,8 @@ resource "aws_instance" "mc" {
         Owner = local.settings.owner
         "passthrough:ansible_ssh_private_key_file" = local.settings.keypair.private_key
         "passthrough:ansible_user" = local.settings.mc.user
+        team  = local.settings.team
+        type  = local.settings.type
     }
 
     connection {

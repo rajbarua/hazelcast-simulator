@@ -16,10 +16,18 @@
 package com.hazelcast.simulator.utils;
 
 import com.hazelcast.cluster.Member;
+import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.core.HazelcastInstanceAware;
+import com.hazelcast.shaded.org.json.JSONArray;
+import com.hazelcast.shaded.org.json.JSONObject;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
+import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -30,6 +38,7 @@ import java.util.concurrent.TimeoutException;
 public final class HazelcastUtils {
 
     private static final int TIMEOUT_SECONDS = 60;
+    private static final Logger LOGGER = LogManager.getLogger(HazelcastUtils.class);
 
     private HazelcastUtils() {
     }
@@ -53,6 +62,46 @@ public final class HazelcastUtils {
         return memberIterator.hasNext() && memberIterator.next().equals(hazelcastInstance.getLocalEndpoint());
     }
 
+    /**
+     * Handles configuration settings for a member, based on properties bound to an agent's internal IP address.
+     * <p>
+     * This method is designed to be extendable for future configuration
+     * properties that may be applied on exclusive agents.
+     * </p>
+     *
+     * <p>
+     * Currently, the method supports the following configuration:
+     * </p>
+     * <ul>
+     *   <li><b>CP Member Priority:</b> If the "cp_priorities" property is provided,
+     *   the method will set the CP member priority for the agent based on the agent's private IP address.</li>
+     * </ul>
+     *
+     * <p>
+     * Future configurations may extend the use of additional properties in a similar manner.
+     * </p>
+     *
+     */
+    public static void handlePerAgentConfig(Map<String, String> properties, Config config) {
+        String cpPriorities = properties.get("cp_priorities");
+        if (cpPriorities == null) {
+            return;
+        }
+
+        String agentPrivateAddress = properties.get("PRIVATE_ADDRESS");
+        JSONArray cpPriorityArray = new JSONArray(cpPriorities);
+
+        cpPriorityArray.forEach(item -> {
+            JSONObject jsonObject = (JSONObject) item;
+            String address = jsonObject.getString("address");
+            int priority = jsonObject.getInt("priority");
+            if (address.equals(agentPrivateAddress)) {
+                LOGGER.info("Setting CP member priority to " + priority + " for agent " + agentPrivateAddress);
+                config.getCPSubsystemConfig().setCPMemberPriority(priority);
+            }
+        });
+    }
+
     public static String getHazelcastAddress(String workerType, String publicAddress, HazelcastInstance hazelcastInstance) {
         if (hazelcastInstance != null) {
             InetSocketAddress socketAddress = getInetSocketAddress(hazelcastInstance);
@@ -72,6 +121,27 @@ public final class HazelcastUtils {
             } catch (Exception e) {
                 return null;
             }
+        }
+    }
+
+    public static void waitForClusterSafeState(HazelcastInstance targetInstance) throws InterruptedException, ExecutionException {
+        targetInstance.getExecutorService("safe-check").submit(new WaitForClusterSafe()).get();
+    }
+
+    private static class WaitForClusterSafe implements Callable<Boolean>, HazelcastInstanceAware, Serializable {
+        private HazelcastInstance node;
+
+        @Override
+        public Boolean call() throws Exception {
+            while (!node.getPartitionService().isClusterSafe()) {
+                Thread.sleep(1);
+            }
+            return true;
+        }
+
+        @Override
+        public void setHazelcastInstance(HazelcastInstance node) {
+            this.node = node;
         }
     }
 }
