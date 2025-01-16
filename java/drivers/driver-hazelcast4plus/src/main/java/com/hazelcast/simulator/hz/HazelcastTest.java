@@ -48,6 +48,6 @@ public abstract class HazelcastTest {
     protected HazelcastInstance targetInstance;
 
     public IAtomicLong getAtomicLong(String name) {
-        return targetInstance.getDistributedObject("hz:impl:atomicLongService", name);
+        return targetInstance.getCPSubsystem().getAtomicLong(name);
     }
 }

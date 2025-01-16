@@ -16,7 +16,10 @@
 
 package com.hazelcast.simulator.hz.concurrent;
 
+import java.util.concurrent.CompletableFuture;
+
 import com.hazelcast.core.Pipelining;
+import com.hazelcast.cp.CPSubsystem;
 import com.hazelcast.cp.IAtomicLong;
 import com.hazelcast.simulator.hz.HazelcastTest;
 import com.hazelcast.simulator.probes.LatencyProbe;
@@ -26,25 +29,25 @@ import com.hazelcast.simulator.test.annotations.StartNanos;
 import com.hazelcast.simulator.test.annotations.Teardown;
 import com.hazelcast.simulator.test.annotations.TimeStep;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
-
 public class AtomicLongTest extends HazelcastTest {
 
     // properties
     public int countersLength = 1000;
     public int pipelineDepth = 100;
     public int pipelineIterations = 100;
+    public int cpGroupCount = 0;
 
     private IAtomicLong[] counters;
-    private final Executor callerRuns = Runnable::run;
 
     @Setup
     public void setup() {
+        CPSubsystem cpSubsystem = targetInstance.getCPSubsystem();
         counters = new IAtomicLong[countersLength];
         for (int i = 0; i < countersLength; i++) {
-            counters[i] = getAtomicLong("" + i);
-            counters[i].get();
+            String cpGroupString = cpGroupCount == 0
+                    ? ""
+                    : "@" + (i % cpGroupCount);
+            counters[i] = cpSubsystem.getAtomicLong("ref-"+i + cpGroupString);
         }
     }
 

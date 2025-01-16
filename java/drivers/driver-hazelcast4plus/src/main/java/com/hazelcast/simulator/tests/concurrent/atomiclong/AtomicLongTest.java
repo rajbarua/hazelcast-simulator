@@ -15,7 +15,12 @@
  */
 package com.hazelcast.simulator.tests.concurrent.atomiclong;
 
+import static com.hazelcast.simulator.tests.helpers.KeyLocality.SHARED;
+import static org.junit.Assert.assertEquals;
+
 import com.hazelcast.core.DistributedObject;
+import com.hazelcast.core.IFunction;
+import com.hazelcast.cp.CPSubsystem;
 import com.hazelcast.cp.IAtomicLong;
 import com.hazelcast.simulator.hz.HazelcastTest;
 import com.hazelcast.simulator.test.BaseThreadState;
@@ -26,39 +31,54 @@ import com.hazelcast.simulator.test.annotations.TimeStep;
 import com.hazelcast.simulator.test.annotations.Verify;
 import com.hazelcast.simulator.tests.helpers.KeyLocality;
 
-import static com.hazelcast.simulator.tests.helpers.KeyLocality.SHARED;
-import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateStringKeys;
-import static org.junit.Assert.assertEquals;
-
 public class AtomicLongTest extends HazelcastTest {
 
     // properties
     public KeyLocality keyLocality = SHARED;
     public int countersLength = 1000;
+    public int cpGroupCount = 0;
 
     private IAtomicLong totalCounter;
     private IAtomicLong[] counters;
 
     @Setup
     public void setup() {
+        CPSubsystem cpSubsystem = targetInstance.getCPSubsystem();
         totalCounter = getAtomicLong(name + ":TotalCounter");
         counters = new IAtomicLong[countersLength];
 
-        String[] names = generateStringKeys(name, countersLength, keyLocality, targetInstance);
         for (int i = 0; i < countersLength; i++) {
-            counters[i] = getAtomicLong(names[i]);
+            String cpGroupString = cpGroupCount == 0
+                    ? ""
+                    : "@" + (i % cpGroupCount);
+            counters[i] = cpSubsystem.getAtomicLong("ref-"+i + cpGroupString);
         }
     }
 
-    @TimeStep(prob = -1)
+    @TimeStep(prob = 0.5)
     public long get(ThreadState state) {
         return state.randomCounter().get();
     }
 
     @TimeStep(prob = 0.1)
-    public long write(ThreadState state) {
+    public long incrementAndGet(ThreadState state) {
         state.increments++;
         return state.randomCounter().incrementAndGet();
+    }
+    
+    @TimeStep(prob = 1)
+    public void set(ThreadState state) {
+        state.randomCounter().set(++state.increments);
+    }
+
+    @TimeStep(prob = 0)
+    public void alter(ThreadState state) {
+        state.randomCounter().alter(state.identity);
+    }
+
+    @TimeStep(prob = 0)
+    public boolean cas(ThreadState state) {
+        return state.randomCounter().compareAndSet(state.increments, ++state.increments);
     }
 
     public class ThreadState extends BaseThreadState {
@@ -69,6 +89,7 @@ public class AtomicLongTest extends HazelcastTest {
             int index = randomInt(counters.length);
             return counters[index];
         }
+        final IFunction<Long, Long> identity = s -> s;
     }
 
     @AfterRun
@@ -78,14 +99,12 @@ public class AtomicLongTest extends HazelcastTest {
 
     @Verify
     public void verify() {
-        String serviceName = totalCounter.getServiceName();
         String totalName = totalCounter.getName();
 
         long actual = 0;
         for (DistributedObject distributedObject : targetInstance.getDistributedObjects()) {
             String key = distributedObject.getName();
-            if (serviceName.equals(distributedObject.getServiceName())
-                    && key.startsWith(name)
+            if (key.startsWith(name)
                     && !key.equals(totalName)) {
                 actual += getAtomicLong(key).get();
             }
