@@ -31,10 +31,11 @@ import com.hazelcast.simulator.test.annotations.TimeStep;
 import com.hz.demo.domain.POJO;
 import com.hz.demo.domain.TestDto;
 
-public class TrainTest extends HazelcastTest {
+public class TrainTestCS extends HazelcastTest {
 
     // properties
-    public long entryCount = 1_000;
+    public long entryCount = 100_000;
+
 
     private IMap<String, TestDto> trainDto;
     private List<String> keys;
@@ -45,7 +46,7 @@ public class TrainTest extends HazelcastTest {
         trainDto = targetInstance.getMap(name);
     }
 
-    @Prepare(global = true)
+    @Prepare(global = false)
     public void prepare() {
         keys = ThreadLocalRandom.current()
                 .longs(entryCount)
@@ -101,7 +102,7 @@ public class TrainTest extends HazelcastTest {
 
     @Teardown
     public void tearDown() {
-        trainDto.destroy();
+        // trainDto.destroy();
     }
 
     private TestDto createRandomDto(String id) {
