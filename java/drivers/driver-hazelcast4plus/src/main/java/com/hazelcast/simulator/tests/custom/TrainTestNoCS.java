@@ -20,7 +20,6 @@ import com.google.common.collect.ImmutableRangeMap;
 import com.google.common.collect.Range;
 import com.google.common.collect.RangeMap;
 import com.google.common.collect.Table;
-import com.google.common.collect.TreeRangeMap;
 import com.hazelcast.map.IMap;
 import com.hazelcast.simulator.hz.HazelcastTest;
 import com.hazelcast.simulator.test.BaseThreadState;
@@ -119,8 +118,9 @@ public class TrainTestNoCS extends HazelcastTest {
         ImmutableRangeMap<LocalDate, List<POJONoCS>> m4Val = ImmutableRangeMap.<LocalDate, List<POJONoCS>>builder()
                 .put(Range.closed(today.minusDays(2), today.minusDays(1)), Arrays.asList(pojoNoCS))
                 .build();
-        RangeMap<Integer, List<POJONoCS>> rm = TreeRangeMap.create();
-        rm.put(Range.closed(0, 10), Arrays.asList(pojoNoCS));
+        RangeMap<Integer, List<POJONoCS>> rm = ImmutableRangeMap.<Integer, List<POJONoCS>>builder()
+                .put(Range.closed(0, 10), Arrays.asList(pojoNoCS))
+                .build();
 
         HashMultimap<String, POJONoCS> mmString = HashMultimap.create();
         mmString.put("k1", pojoNoCS);
