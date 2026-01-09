@@ -1,11 +1,18 @@
+# syntax=docker/dockerfile:1.5
 FROM ubuntu:24.04
 
 # Declare build arguments
 ARG PYTHON_VERSION=3.11
+ARG KUBECTL_VERSION=1.29.0
+ARG HZ_VERSION=5.6.0
+ARG HZ_ARTIFACTS="hazelcast-enterprise hazelcast-sql hazelcast-spring"
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime dependencies with retry mechanism
 RUN apt-get update && apt-get install -y software-properties-common \
-    && add-apt-repository ppa:deadsnakes/ppa \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && add-apt-repository -y universe \
     && apt-get update && apt-get install -y \
         wget \
         maven \
@@ -28,6 +35,21 @@ RUN apt-get update && apt-get install -y software-properties-common \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Install pcp without systemd service start attempts
+RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d && chmod +x /usr/sbin/policy-rc.d \
+    && if [ -x /usr/bin/systemctl ]; then \
+         dpkg-divert --local --rename --add /usr/bin/systemctl && \
+         ln -s /bin/true /usr/bin/systemctl; \
+       fi \
+    && apt-get update && apt-get install -y pcp \
+    && rm /usr/sbin/policy-rc.d \
+    && if [ -L /usr/bin/systemctl ]; then \
+         rm /usr/bin/systemctl && \
+         dpkg-divert --local --rename --remove /usr/bin/systemctl; \
+       fi \
+    && rm -rf /var/lib/apt/lists/*
+
+
 # Install Eclipse Temurin JDK 17
 RUN wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /usr/share/keyrings/adoptium-archive-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/adoptium-archive-keyring.gpg] https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/adoptium.list && \
@@ -49,6 +71,20 @@ RUN curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/sh
 
 # Install AWS CLI
 RUN python${PYTHON_VERSION} -m pip install --no-cache-dir awscli
+
+# Install kubectl (needed by coordinator for kubectl exec/cp)
+RUN curl -fsSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/amd64/kubectl" && \
+    chmod +x /usr/local/bin/kubectl
+
+# Pre-fetch Hazelcast artifacts into the local Maven cache (optional settings via build secret)
+RUN mkdir -p /root/.m2/repository
+RUN --mount=type=secret,id=maven_settings,target=/root/.m2/settings.xml,required=false \
+    for artifact in ${HZ_ARTIFACTS}; do \
+        mvn -B -Dmaven.repo.local=/root/.m2/repository \
+            org.apache.maven.plugins:maven-dependency-plugin:3.2.0:get \
+            -Dartifact=com.hazelcast:${artifact}:${HZ_VERSION} \
+            -DremoteRepositories=https://repository.hazelcast.com/release; \
+    done
 
 # Install Python dependencies
 COPY requirements.txt /tmp/requirements.txt
@@ -122,6 +158,11 @@ RUN chmod 777 /tmp
 
 # Ensure the /opt/simulator directory is readable by all users
 RUN chmod -R 755 /opt/simulator
+
+# Provide a stable path expected by legacy scripts
+RUN ln -s /opt/simulator /hazelcast-simulator && \
+    ln -s /opt/simulator /root/hazelcast-simulator && \
+    ln -s /opt/simulator /workspace/hazelcast-simulator
 
 # Add a welcome message script
 RUN echo '#!/bin/bash' > /opt/simulator/bin/simulator-welcome && \

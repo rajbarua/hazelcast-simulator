@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 
+import os
+
 from simulator.log import info
-from simulator.util import shell, run_parallel
-from simulator.hosts import public_ip, ssh_user, ssh_options
+from simulator.util import run_parallel
+from simulator.hosts import public_ip
+from simulator.remote import remote_for_host
 
 
 def _agent_download(agent, run_path, run_id):
@@ -13,10 +16,9 @@ def _agent_download(agent, run_path, run_id):
     else:
         dst_path = f"hazelcast-simulator/workers/{run_id}/"
 
-    # copy the files
-    # we exclude the uploads directory because it could be very big e.g jars
-    shell(
-        f"""rsync --copy-links -avvz --compress-level=9 -e "ssh {ssh_options(agent)}" --exclude 'upload' {ssh_user(agent)}@{public_ip(agent)}:{dst_path} {run_path}""")
+    os.makedirs(run_path, exist_ok=True)
+    remote = remote_for_host(agent)
+    remote.cp_from(dst_path, run_path, exclude="upload")
 
     info(f"     {public_ip(agent)} Download completed")
 

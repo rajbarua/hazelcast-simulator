@@ -12,10 +12,12 @@ if ! hash java 2>/dev/null; then
   exit 1
 fi
 
-if hash killall 2>/dev/null; then
+if command -v killall >/dev/null 2>&1; then
   killall -9 -q java || true
-else
+elif command -v pkill >/dev/null 2>&1; then
   pkill -9 java || true
+else
+  echo "killall/pkill not found; skipping java cleanup"
 fi
 
 rm -f agent.pid

@@ -61,6 +61,13 @@ public class AgentData {
     private final Map<String, String> tags;
     private String sshUser = "simulator";
     private String sshOptions = "-i key -o StrictHostKeyChecking=no -o ConnectTimeout=60";
+    private String connection = "ssh";
+    private String namespace;
+    private String pod;
+    private String container;
+    private String context;
+    private String kubeconfig;
+    private String agentPort = "9000";
 
 
     public AgentData(int addressIndex, String publicAddress, String privateAddress) {
@@ -92,6 +99,62 @@ public class AgentData {
 
     public void setSshOptions(String sshOptions) {
         this.sshOptions = sshOptions;
+    }
+
+    public String getConnection() {
+        return connection;
+    }
+
+    public void setConnection(String connection) {
+        this.connection = connection;
+    }
+
+    public String getNamespace() {
+        return namespace;
+    }
+
+    public void setNamespace(String namespace) {
+        this.namespace = namespace;
+    }
+
+    public String getPod() {
+        return pod;
+    }
+
+    public void setPod(String pod) {
+        this.pod = pod;
+    }
+
+    public String getContainer() {
+        return container;
+    }
+
+    public void setContainer(String container) {
+        this.container = container;
+    }
+
+    public String getContext() {
+        return context;
+    }
+
+    public void setContext(String context) {
+        this.context = context;
+    }
+
+    public String getKubeconfig() {
+        return kubeconfig;
+    }
+
+    public void setKubeconfig(String kubeconfig) {
+        this.kubeconfig = kubeconfig;
+    }
+
+    public String getAgentPort() {
+        return agentPort;
+    }
+
+    public void setAgentPort(String agentPort) {
+        this.agentPort = agentPort;
     }
 
 
@@ -214,9 +277,15 @@ public class AgentData {
             agent.put("private_ip", agentData.privateAddress);
             agent.put("ssh_options", agentData.sshOptions);
             agent.put("ssh_user", agentData.sshUser);
+            agent.put("connection", agentData.connection);
+            agent.put("namespace", agentData.namespace);
+            agent.put("pod", agentData.pod);
+            agent.put("container", agentData.container);
+            agent.put("context", agentData.context);
+            agent.put("kubeconfig", agentData.kubeconfig);
             agent.put("agent_index", ""+agentData.addressIndex);
             // TODO: Hack
-            agent.put("agent_port", "9000");
+            agent.put("agent_port", agentData.agentPort);
             agents.add(agent);
         }
 

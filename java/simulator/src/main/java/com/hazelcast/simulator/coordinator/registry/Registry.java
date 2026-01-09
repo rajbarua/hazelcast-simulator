@@ -404,6 +404,27 @@ public class Registry {
                 agentData = registry.addAgent(publicIp, privateIp, tags);
                 agentData.setSshOptions((String) host.get("ssh_options"));
                 agentData.setSshUser((String) host.get("ssh_user"));
+                if (host.get("connection") != null) {
+                    agentData.setConnection((String) host.get("connection"));
+                }
+                if (host.get("namespace") != null) {
+                    agentData.setNamespace((String) host.get("namespace"));
+                }
+                if (host.get("pod") != null) {
+                    agentData.setPod((String) host.get("pod"));
+                }
+                if (host.get("container") != null) {
+                    agentData.setContainer((String) host.get("container"));
+                }
+                if (host.get("context") != null) {
+                    agentData.setContext((String) host.get("context"));
+                }
+                if (host.get("kubeconfig") != null) {
+                    agentData.setKubeconfig((String) host.get("kubeconfig"));
+                }
+                if (host.get("agent_port") != null) {
+                    agentData.setAgentPort("" + host.get("agent_port"));
+                }
             }
             agents.add(agentData);
         }

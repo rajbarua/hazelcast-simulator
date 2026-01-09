@@ -7,6 +7,7 @@ from typing import Optional
 
 from simulator.log import info
 from simulator.util import shell, run_parallel, simulator_home
+from simulator.remote import remote_for_host
 
 
 def find_driver_config_file(driver, filename):
@@ -27,10 +28,9 @@ def find_driver_config_file(driver, filename):
 
 def _upload_driver(host, driver_dir):
     info(f"     {host['public_ip']}  Uploading")
-    shell(
-        f"""rsync --checksum -avv -L -e "ssh {host['ssh_options']}" \
-            {simulator_home}/{driver_dir}/* \
-            {host['ssh_user']}@{host['public_ip']}:hazelcast-simulator/{driver_dir}/""")
+    remote = remote_for_host(host)
+    remote.exec(f"mkdir -p hazelcast-simulator/{driver_dir}")
+    remote.cp_to(f"{simulator_home}/{driver_dir}", "hazelcast-simulator/")
     info(f"     {host['public_ip']}  Uploading: done")
 
 

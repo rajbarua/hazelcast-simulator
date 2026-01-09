@@ -4,7 +4,7 @@ import threading
 from time import sleep
 
 from inventory import load_hosts, find_host_with_public_ip
-from simulator.ssh import Ssh
+from simulator.remote import remote_for_host
 from simulator.util import exit_with_error
 
 
@@ -112,31 +112,20 @@ class IPerf3Test:
 
 def start_client(client, server, args, silent=False):
     sleep(2)
-    ssh_client = Ssh(
-        client["public_ip"],
-        client["ssh_user"],
-        client["ssh_options"],
-        log_enabled=False,
-        use_control_socket=False)
-    ssh_client.connect()
+    remote = remote_for_host(client)
+    remote.connect(check=False)
     server_ip = server["private_ip"]
     iperf_cmd = f"iperf3 -c {server_ip} -p 3000 {args} --connect-timeout 30000"
     print(iperf_cmd)
-    ssh_client.exec(iperf_cmd, silent)
+    remote.exec(iperf_cmd, silent)
 
 
 def start_server(server, args, silent=False):
-    ssh_server = Ssh(
-        server["public_ip"],
-        server["ssh_user"],
-        server["ssh_options"],
-        silent_seconds=0,
-        log_enabled=False,
-        use_control_socket=False)
-    ssh_server.connect()
+    remote = remote_for_host(server)
+    remote.connect(check=False)
     iperf_cmd = f"iperf3 --one-off -s -p 3000 --pidfile iperf3.pid {args}"
     print(iperf_cmd)
-    ssh_server.exec(f"""
+    remote.exec(f"""
         set -e
         if [ -e "iperf3.pid" ]; then
             (kill -9 $(cat iperf3.pid)) >/dev/null 2>&1

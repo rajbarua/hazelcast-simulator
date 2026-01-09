@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: perf
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: simulator-coordinator
+  namespace: perf
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: simulator-coordinator
+  namespace: perf
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/exec", "pods/log"]
+    verbs: ["get", "list", "watch", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: simulator-coordinator
+  namespace: perf
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: simulator-coordinator
+subjects:
+  - kind: ServiceAccount
+    name: simulator-coordinator
+    namespace: perf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loadgen
+  namespace: perf
+spec:
+  clusterIP: None
+  selector:
+    app: loadgen
+  ports:
+    - name: agent
+      port: 9000
+      targetPort: 9000
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: loadgen
+  namespace: perf
+spec:
+  serviceName: loadgen
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loadgen
+  template:
+    metadata:
+      labels:
+        app: loadgen
+    spec:
+      containers:
+        - name: simulator
+          image: asia-south1-docker.pkg.dev/solution-architects-415712/raj/hazelcast-simulator:latest
+          imagePullPolicy: Always
+          command: ["bash", "-lc", "sleep infinity"]
+          ports:
+            - name: agent
+              containerPort: 9000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simulator-coordinator
+  namespace: perf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simulator-coordinator
+  template:
+    metadata:
+      labels:
+        app: simulator-coordinator
+    spec:
+      serviceAccountName: simulator-coordinator
+      containers:
+        - name: simulator
+          image: asia-south1-docker.pkg.dev/solution-architects-415712/raj/hazelcast-simulator:latest
+          imagePullPolicy: Always
+          command: ["bash", "-lc", "sleep infinity"]

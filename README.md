@@ -825,6 +825,200 @@ In order to do this, you need to use the internal `coordinator` command, and you
 * Specify the correct `<cluster-name>` in the `client-hazelcast.xml` - for the same reason as with IP addresses,
   you have to adjust the `<cluster-name>` configuration to match the one in the running cluster.
 
+### Running load generators inside Kubernetes (kubectl exec)
+
+Simulator helpers can talk to pods via `kubectl exec`/`kubectl cp`, so you can run agents/load generators as pods instead of SSH hosts. Add the pods to `inventory.yaml` with `connection: kubectl`:
+
+```yaml
+loadgenerators:
+  hosts:
+    perf-loadgen-0:
+      connection: kubectl
+      namespace: perf
+      pod: perf-loadgen-0          # defaults to public_ip if omitted
+      container: simulator         # optional
+      agent_port: 9000             # coordinator must reach this pod DNS/IP:port
+      private_ip: perf-loadgen-0   # pod DNS used by members/clients
+```
+
+- Run the coordinator where it can reach the pod DNS/IP on `agent_port` (typically inside the same cluster, using a StatefulSet + headless Service for stable names).
+- Pre-bake Java and `hazelcast-simulator` into the pod image; `inventory install`/Ansible steps are skipped for `connection: kubectl`.
+
+#### Build and push the Simulator image for GKE
+
+Example using Artifact Registry (recommended):
+
+```bash
+# Set your project and region
+gcloud config set project <PROJECT_ID>
+gcloud config set artifacts/location <REGION>
+
+# Create a repository (one time)
+gcloud artifacts repositories create hazelcast-simulator \
+  --repository-format=docker \
+  --location <REGION>
+
+# Build and push
+IMAGE="<REGION>-docker.pkg.dev/<PROJECT_ID>/hazelcast-simulator/simulator:latest"
+docker build -t "${IMAGE}" .
+gcloud auth configure-docker "<REGION>-docker.pkg.dev"
+docker push "${IMAGE}"
+```
+
+To pre-fetch Hazelcast Maven artifacts at build time (avoid downloads at runtime), pass a build secret for your Maven settings:
+
+```bash
+docker buildx build \
+  --platform linux/amd64 \
+  --secret id=maven_settings,src=~/.m2.settings.xml \
+  --build-arg HZ_VERSION=5.6.0 \
+  -t "${IMAGE}" \
+  -f Dockerfile \
+  --push \
+  .
+```
+
+Example using Container Registry:
+
+```bash
+gcloud config set project <PROJECT_ID>
+IMAGE="gcr.io/<PROJECT_ID>/hazelcast-simulator:latest"
+docker build -t "${IMAGE}" .
+gcloud auth configure-docker
+docker push "${IMAGE}"
+```
+
+If you use Artifactory registry then you can use use something like
+
+```bash
+gcloud auth configure-docker asia-south1-docker.pkg.dev
+docker buildx build --platform linux/amd64 -t asia-south1-docker.pkg.dev/solution-architects-415712/raj/hazelcast-simulator:latest -f Dockerfile --push .
+docker buildx build --platform linux/amd64 --secret id=maven_settings,src=/Users/raj/.m2/settings.xml --build-arg HZ_VERSION=5.6.0 -t asia-south1-docker.pkg.dev/solution-architects-415712/raj/hazelcast-simulator:latest -f Dockerfile --push .
+kubectl apply -f conf/simulator-k8s.yaml
+kubectl -n perf delete pod -l app=simulator-coordinator
+kubectl -n perf delete pod -l app=loadgen
+POD=$(kubectl -n perf get pod -l app=simulator-coordinator -o jsonpath='{.items[0].metadata.name}')
+kubectl -n perf cp ../inventory.yaml ${POD}:/workspace/inventory.yaml
+kubectl -n perf cp ../prs_gke_tests.yaml ${POD}:/workspace/prs_gke_tests.yaml
+kubectl -n perf cp ../client-hazelcast.xml ${POD}:/workspace/client-hazelcast.xml
+kubectl -n perf exec -it ${POD} -- bash
+perftest run prs_gke_tests.yaml
+cd runs
+kubectl -n perf cp ${POD}:/workspace/runs/ ./
+```
+
+
+
+#### Example Kubernetes manifests (load generators + coordinator)
+
+The coordinator needs RBAC to `exec` into the load generator pods. This example creates a namespace, ServiceAccount, Role/RoleBinding, a headless Service + StatefulSet for load generators, and a coordinator Deployment you can `kubectl exec` into.
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: perf
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: simulator-coordinator
+  namespace: perf
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: simulator-coordinator
+  namespace: perf
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/exec", "pods/log"]
+    verbs: ["get", "list", "watch", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: simulator-coordinator
+  namespace: perf
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: simulator-coordinator
+subjects:
+  - kind: ServiceAccount
+    name: simulator-coordinator
+    namespace: perf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loadgen
+  namespace: perf
+spec:
+  clusterIP: None
+  selector:
+    app: loadgen
+  ports:
+    - name: agent
+      port: 9000
+      targetPort: 9000
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: loadgen
+  namespace: perf
+spec:
+  serviceName: loadgen
+  replicas: 2
+  selector:
+    matchLabels:
+      app: loadgen
+  template:
+    metadata:
+      labels:
+        app: loadgen
+    spec:
+      containers:
+        - name: simulator
+          image: <YOUR_IMAGE>
+          imagePullPolicy: Always
+          command: ["bash", "-lc", "sleep infinity"]
+          ports:
+            - name: agent
+              containerPort: 9000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simulator-coordinator
+  namespace: perf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simulator-coordinator
+  template:
+    metadata:
+      labels:
+        app: simulator-coordinator
+    spec:
+      serviceAccountName: simulator-coordinator
+      containers:
+        - name: simulator
+          image: <YOUR_IMAGE>
+          imagePullPolicy: Always
+          command: ["bash", "-lc", "sleep infinity"]
+```
+
+Apply:
+
+```bash
+kubectl apply -f simulator-k8s.yaml
+```
+
+Then `kubectl exec` into the coordinator pod, copy your `inventory.yaml`, `tests.yaml`, and `client-hazelcast.xml` into `/workspace`, and run `perftest run`.
+
 ### Running tests against a cluster in Hazelcast Cloud
 
 If you want to test the performance of the Hazelcast Cloud managed cluster, you follow the same setup as

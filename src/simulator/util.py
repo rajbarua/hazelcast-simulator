@@ -221,8 +221,8 @@ def find_config_file(filename):
     raise Exception(f"Could not find a configuration file with name '{filename}'")
 
 
-def determine_package_manager(ssh):
-    distro_info = get_linux_distribution(ssh)
+def determine_package_manager(remote):
+    distro_info = get_linux_distribution(remote)
     if distro_info == "debian":
         return "apt"
     elif distro_info == "rpm":
@@ -232,13 +232,14 @@ def determine_package_manager(ssh):
         raise Exception(f"Unsupported distribution: {distro_info}")
 
 
-def get_linux_distribution(ssh):
+def get_linux_distribution(remote):
     distro = None
-    exitcode, output = ssh.exec("cat /etc/*release")
+    result = remote.exec("cat /etc/*release", fail_on_error=False)
+    exitcode = result if isinstance(result, int) else result[0]
+    output = "" if isinstance(result, int) else result[1]
     if exitcode == 0:
         if "ubuntu" in output.lower() or "debian" in output.lower():
             distro = 'debian'
         elif "centos" in output.lower() or "fedora" in output.lower() or "rhel" in output.lower() or "amazon" in output.lower():
             distro = 'rpm'
     return distro
-

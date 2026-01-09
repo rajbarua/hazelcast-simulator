@@ -23,12 +23,13 @@ from inventory import load_hosts
 from simulator.driver import driver_install_and_configure, driver_post_run
 from simulator.git import get_last_commit_hash, git_init, is_git_installed, is_inside_git_repo, \
     commit_modified_files
-from simulator.hosts import public_ip, ssh_user, ssh_options
-from simulator.ssh import Ssh, new_key
+from simulator.hosts import public_ip, ssh_user
+from simulator.ssh import new_key
 from simulator.util import read_file, write_file, shell, run_parallel, exit_with_error, simulator_home, shell_logged, \
     remove_dir, \
     load_yaml_file, parse_tags, write_yaml, AtomicLong
 from simulator.log import info, warn, log_header
+from simulator.remote import remote_for_host
 
 default_tests_path = 'tests.yaml'
 inventory_path = 'inventory.yaml'
@@ -44,23 +45,25 @@ class PerfTest:
         self.verified_hosts = set()
 
     def _verify_host(self, host, error_counter):
-        ssh = Ssh(public_ip(host), ssh_user(host), ssh_options(host))
+        remote = remote_for_host(host)
 
-        exitcode = ssh.connect()
+        exitcode = remote.connect(check=False)
+        if isinstance(exitcode, tuple):
+            exitcode = exitcode[0]
         if exitcode != 0:
             warn(f"     {public_ip(host)} Verify connection: Failed")
             error_counter.inc()
             return
         info(f"     {public_ip(host)} Verify connection: Ok")
 
-        exitcode = ssh.exec("java -version", silent=True)
+        exitcode = remote.exec("java -version", silent=True, fail_on_error=False)
         if exitcode != 0:
             warn(f"     {public_ip(host)} Verify Java: Failed")
             error_counter.inc()
         else:
             info(f"     {public_ip(host)} Verify Java: Ok")
 
-        exitcode = ssh.exec("cd hazelcast-simulator", silent=True)
+        exitcode = remote.exec("cd hazelcast-simulator", silent=True, fail_on_error=False)
         if exitcode != 0:
             warn(f"     {public_ip(host)} Verify simulator: Failed")
             error_counter.inc()
@@ -83,8 +86,8 @@ class PerfTest:
         info(f"Host verification [{host_pattern}]: done")
 
     def __kill_java(self, host):
-        ssh = Ssh(public_ip(host), ssh_user(host), ssh_options(host))
-        ssh.exec("hazelcast-simulator/bin/hidden/kill_java")
+        remote = remote_for_host(host)
+        remote.exec("hazelcast-simulator/bin/hidden/kill_java")
 
     def kill_java(self, host_pattern):
         log_header(f"perftest kill_java [{host_pattern}]: started")
