@@ -6,6 +6,7 @@ ARG PYTHON_VERSION=3.11
 ARG KUBECTL_VERSION=1.29.0
 ARG HZ_VERSION=5.6.0
 ARG HZ_ARTIFACTS="hazelcast-enterprise hazelcast-sql hazelcast-spring"
+ENV MAVEN_OPTS="-Dmaven.repo.local=/opt/simulator/.m2/repository"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -77,10 +78,10 @@ RUN curl -fsSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/v${KUBECTL_VER
     chmod +x /usr/local/bin/kubectl
 
 # Pre-fetch Hazelcast artifacts into the local Maven cache (optional settings via build secret)
-RUN mkdir -p /root/.m2/repository
+RUN mkdir -p /opt/simulator/.m2/repository
 RUN --mount=type=secret,id=maven_settings,target=/root/.m2/settings.xml,required=false \
     for artifact in ${HZ_ARTIFACTS}; do \
-        mvn -B -Dmaven.repo.local=/root/.m2/repository \
+        mvn -B -Dmaven.repo.local=/opt/simulator/.m2/repository \
             org.apache.maven.plugins:maven-dependency-plugin:3.2.0:get \
             -Dartifact=com.hazelcast:${artifact}:${HZ_VERSION} \
             -DremoteRepositories=https://repository.hazelcast.com/release; \
@@ -156,8 +157,9 @@ WORKDIR /workspace
 # Create /tmp directory with proper permissions for user mapping
 RUN chmod 777 /tmp
 
-# Ensure the /opt/simulator directory is readable by all users
-RUN chmod -R 755 /opt/simulator
+# Ensure simulator directories are writable by arbitrary UIDs (OpenShift-compatible)
+RUN chgrp -R 0 /opt/simulator /workspace && \
+    chmod -R g=u /opt/simulator /workspace
 
 # Provide a stable path expected by legacy scripts
 RUN ln -s /opt/simulator /hazelcast-simulator && \
