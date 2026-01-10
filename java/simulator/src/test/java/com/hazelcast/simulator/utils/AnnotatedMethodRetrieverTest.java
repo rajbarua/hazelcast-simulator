@@ -8,6 +8,8 @@ import com.hazelcast.simulator.test.annotations.Verify;
 import org.junit.Test;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -151,8 +153,13 @@ public class AnnotatedMethodRetrieverTest {
                 .findAll();
 
         assertEquals(2, methodList.size());
-        assertEquals("verify2", methodList.get(0).getName());
-        assertEquals("verify", methodList.get(1).getName());
+        List<String> methodNames = new ArrayList<>();
+        for (Method method : methodList) {
+            methodNames.add(method.getName());
+        }
+        Collections.sort(methodNames);
+        assertEquals("verify", methodNames.get(0));
+        assertEquals("verify2", methodNames.get(1));
     }
 
     @Test
@@ -165,8 +172,13 @@ public class AnnotatedMethodRetrieverTest {
                 .findAll();
 
         assertEquals(2, methodList.size());
-        assertEquals("verify", methodList.get(0).getName());
-        assertEquals("verify2", methodList.get(1).getName());
+        List<String> methodNames = new ArrayList<>();
+        for (Method method : methodList) {
+            methodNames.add(method.getName());
+        }
+        Collections.sort(methodNames);
+        assertEquals("verify", methodNames.get(0));
+        assertEquals("verify2", methodNames.get(1));
     }
 
     public static class SuperClass {

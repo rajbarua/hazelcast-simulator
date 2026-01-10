@@ -4,18 +4,18 @@ from simulator.driver import upload_driver, DriverInstallArgs
 from inventory import load_hosts
 from simulator.log import info
 from simulator.util import run_parallel, shell
-from simulator.ssh import Ssh
+from simulator.remote import remote_for_host
 
 
 def _upload(host, artifact_ids, version, driver):
     info(f"     {host['public_ip']} starting")
 
-    ssh = Ssh(host['public_ip'], host['ssh_user'], host['ssh_options'])
-    ssh.exec("mkdir -p hazelcast-simulator/driver-lib/" + driver + "/")
+    remote = remote_for_host(host)
+    remote.exec("mkdir -p hazelcast-simulator/driver-lib/" + driver + "/")
     dest = f"hazelcast-simulator/driver-lib/{driver}/maven-{version}"
-    ssh.exec(f"mkdir -p {dest}")
+    remote.exec(f"mkdir -p {dest}")
     for artifact_id in artifact_ids:
-        ssh.rsync_to_remote(f"{_get_local_jar_path(artifact_id, version)}", f"{dest}")
+        remote.cp_to(f"{_get_local_jar_path(artifact_id, version)}", f"{dest}")
 
     info(f"     {host['public_ip']} done")
 

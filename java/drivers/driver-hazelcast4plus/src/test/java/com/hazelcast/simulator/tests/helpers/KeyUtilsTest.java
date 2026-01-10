@@ -38,6 +38,7 @@ import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateStringKey;
 import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateStringKeys;
 import static com.hazelcast.simulator.tests.helpers.KeyUtils.isLocalKey;
 import static com.hazelcast.simulator.utils.ReflectionUtils.invokePrivateConstructor;
+import static com.hazelcast.simulator.utils.TestUtils.assertTrueEventually;
 import static com.hazelcast.simulator.hazelcast4plus.Hazelcast4PlusDriver.warmupPartitions;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -57,15 +58,33 @@ public class KeyUtilsTest {
     @BeforeClass
     public static void beforeClass() {
         Config config = new Config();
+        config.setClusterName("key-utils-test");
         config.setProperty("hazelcast.partition.count", "" + PARTITION_COUNT);
+        config.getNetworkConfig().setPort(5701).setPortAutoIncrement(true);
+        config.getNetworkConfig().getInterfaces().setEnabled(true).addInterface("127.0.0.1");
+        config.getNetworkConfig().getJoin().getAutoDetectionConfig().setEnabled(false);
+        config.getNetworkConfig().getJoin().getMulticastConfig().setEnabled(false);
+        config.getNetworkConfig().getJoin().getTcpIpConfig().setEnabled(true).addMember("127.0.0.1");
 
         hz = newHazelcastInstance(config);
         HazelcastInstance remoteInstance = newHazelcastInstance(config);
         warmupPartitions(hz);
         warmupPartitions(remoteInstance);
+        assertTrueEventually(() -> assertEquals(2, hz.getCluster().getMembers().size()), 30);
+        assertTrueEventually(() -> {
+            int remotePartitions = 0;
+            for (Partition partition : hz.getPartitionService().getPartitions()) {
+                if (partition.getOwner() != null && !partition.getOwner().localMember()) {
+                    remotePartitions++;
+                }
+            }
+            assertTrue("Expected remote partitions", remotePartitions > 0);
+        }, 30);
 
         ClientConfig clientconfig = new ClientConfig();
+        clientconfig.setClusterName("key-utils-test");
         clientconfig.setProperty("hazelcast.partition.count", "" + PARTITION_COUNT);
+        clientconfig.getNetworkConfig().addAddress("127.0.0.1");
 
         client = HazelcastClient.newHazelcastClient(clientconfig);
     }
