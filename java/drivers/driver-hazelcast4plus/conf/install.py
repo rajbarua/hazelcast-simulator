@@ -1,5 +1,4 @@
-import os.path
-import subprocess
+import os
 from simulator.driver import upload_driver, DriverInstallArgs
 from inventory import load_hosts
 from simulator.log import info
@@ -20,10 +19,33 @@ def _upload(host, artifact_ids, version, driver):
     info(f"     {host['public_ip']} done")
 
 
+def _get_repo_from_env():
+    repo = os.environ.get("MAVEN_REPO_LOCAL")
+    if repo:
+        return repo
+    maven_opts = os.environ.get("MAVEN_OPTS", "")
+    for token in maven_opts.split():
+        if token.startswith("-Dmaven.repo.local="):
+            return token.split("=", 1)[1]
+    return None
+
+
 def _get_local_repo():
-    cmd = ("mvn org.apache.maven.plugins:maven-help-plugin:3.2.0:evaluate "
-           "-Dexpression=settings.localRepository -q -DforceStdout")
-    return subprocess.check_output(cmd, shell=True, text=True)
+    repo = _get_repo_from_env()
+    if repo:
+        return repo
+    return os.path.expanduser("~/.m2/repository")
+
+
+def _maven_offline_flag():
+    return "-o" if os.environ.get("SIMULATOR_MAVEN_OFFLINE", "false").lower() == "true" else ""
+
+
+def _maven_settings_flag():
+    settings = os.environ.get("MAVEN_SETTINGS_FILE")
+    if settings:
+        return f"-s {settings}"
+    return ""
 
 
 def _get_local_jar_path(artifact_id, version):
@@ -32,7 +54,11 @@ def _get_local_jar_path(artifact_id, version):
 
 def _download_from_maven_repo(artifact_id:str, version:str, repo:str):
     artifact = f"com.hazelcast:{artifact_id}:{version}"
-    cmd = (f"mvn org.apache.maven.plugins:maven-dependency-plugin:3.2.0:get "
+    local_repo = _get_local_repo()
+    offline_flag = _maven_offline_flag()
+    settings_flag = _maven_settings_flag()
+    cmd = (f"mvn {offline_flag} -Dmaven.repo.local={local_repo} {settings_flag} "
+           f"org.apache.maven.plugins:maven-dependency-plugin:3.2.0:get "
            f"-DremoteRepositories={repo} -Dartifact={artifact}")
     info(f"{cmd}")
     exitcode = shell(cmd)

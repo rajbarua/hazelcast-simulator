@@ -68,6 +68,9 @@ spec:
           image: asia-south1-docker.pkg.dev/solution-architects-415712/raj/hazelcast-simulator:latest
           imagePullPolicy: Always
           command: ["bash", "-lc", "sleep infinity"]
+          env:
+            - name: MAVEN_SETTINGS_FILE
+              value: /workspace/.m2/settings.xml
           ports:
             - name: agent
               containerPort: 9000

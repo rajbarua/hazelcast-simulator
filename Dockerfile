@@ -7,6 +7,7 @@ ARG KUBECTL_VERSION=1.29.0
 ARG HZ_VERSION=5.6.0
 ARG HZ_ARTIFACTS="hazelcast-enterprise hazelcast-sql hazelcast-spring"
 ENV MAVEN_OPTS="-Dmaven.repo.local=/opt/simulator/.m2/repository"
+ENV SIMULATOR_MAVEN_OFFLINE="true"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -86,6 +87,12 @@ RUN --mount=type=secret,id=maven_settings,target=/root/.m2/settings.xml,required
             -Dartifact=com.hazelcast:${artifact}:${HZ_VERSION} \
             -DremoteRepositories=https://repository.hazelcast.com/release; \
     done
+RUN --mount=type=secret,id=maven_settings,target=/root/.m2/settings.xml,required=false \
+    settings_flag=""; \
+    if [ -f /root/.m2/settings.xml ]; then settings_flag="-s /root/.m2/settings.xml"; fi; \
+    mvn -B -Dmaven.repo.local=/opt/simulator/.m2/repository ${settings_flag} \
+        org.apache.maven.plugins:maven-help-plugin:3.2.0:evaluate \
+        -Dexpression=settings.localRepository -q -DforceStdout
 
 # Install Python dependencies
 COPY requirements.txt /tmp/requirements.txt
