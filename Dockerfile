@@ -6,6 +6,19 @@ ARG PYTHON_VERSION=3.11
 ARG KUBECTL_VERSION=1.29.0
 ARG HZ_VERSION=5.6.0
 ARG HZ_ARTIFACTS="hazelcast-enterprise hazelcast-sql hazelcast-spring"
+ARG SKIP_MAVEN_PREFETCH=false
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ARG http_proxy
+ARG https_proxy
+ARG no_proxy
+ENV HTTP_PROXY=${HTTP_PROXY}
+ENV HTTPS_PROXY=${HTTPS_PROXY}
+ENV NO_PROXY=${NO_PROXY}
+ENV http_proxy=${http_proxy}
+ENV https_proxy=${https_proxy}
+ENV no_proxy=${no_proxy}
 ENV MAVEN_OPTS="-Dmaven.repo.local=/opt/simulator/.m2/repository"
 ENV SIMULATOR_MAVEN_OFFLINE="true"
 
@@ -78,21 +91,30 @@ RUN python${PYTHON_VERSION} -m pip install --no-cache-dir awscli
 RUN curl -fsSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/amd64/kubectl" && \
     chmod +x /usr/local/bin/kubectl
 
+# Optional: copy a local Maven repo from build context (m2repo/)
+COPY m2repo/ /opt/simulator/.m2/repository/
+
 # Pre-fetch Hazelcast artifacts into the local Maven cache (optional settings via build secret)
-RUN mkdir -p /opt/simulator/.m2/repository
+RUN if [ "${SKIP_MAVEN_PREFETCH}" != "true" ]; then \
+      mkdir -p /opt/simulator/.m2/repository; \
+    fi
 RUN --mount=type=secret,id=maven_settings,target=/root/.m2/settings.xml,required=false \
-    for artifact in ${HZ_ARTIFACTS}; do \
+    if [ "${SKIP_MAVEN_PREFETCH}" != "true" ]; then \
+      for artifact in ${HZ_ARTIFACTS}; do \
         mvn -B -Dmaven.repo.local=/opt/simulator/.m2/repository \
             org.apache.maven.plugins:maven-dependency-plugin:3.2.0:get \
             -Dartifact=com.hazelcast:${artifact}:${HZ_VERSION} \
             -DremoteRepositories=https://repository.hazelcast.com/release; \
-    done
+      done; \
+    fi
 RUN --mount=type=secret,id=maven_settings,target=/root/.m2/settings.xml,required=false \
-    settings_flag=""; \
-    if [ -f /root/.m2/settings.xml ]; then settings_flag="-s /root/.m2/settings.xml"; fi; \
-    mvn -B -Dmaven.repo.local=/opt/simulator/.m2/repository ${settings_flag} \
-        org.apache.maven.plugins:maven-help-plugin:3.2.0:evaluate \
-        -Dexpression=settings.localRepository -q -DforceStdout
+    if [ "${SKIP_MAVEN_PREFETCH}" != "true" ]; then \
+      settings_flag=""; \
+      if [ -f /root/.m2/settings.xml ]; then settings_flag="-s /root/.m2/settings.xml"; fi; \
+      mvn -B -Dmaven.repo.local=/opt/simulator/.m2/repository ${settings_flag} \
+          org.apache.maven.plugins:maven-help-plugin:3.2.0:evaluate \
+          -Dexpression=settings.localRepository -q -DforceStdout; \
+    fi
 
 # Install Python dependencies
 COPY requirements.txt /tmp/requirements.txt
