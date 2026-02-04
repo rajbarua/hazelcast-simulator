@@ -53,6 +53,9 @@ public class TrainTestCS extends HazelcastTest {
     private List<TestDto> dtoPool;
     private String setNewKeyPrefixBase;
     private final LongAdder setNewOps = new LongAdder();
+    private final LongAdder ignoredGetOps = new LongAdder();
+    private final LongAdder ignoredSetOps = new LongAdder();
+    private final LongAdder ignoredSetNewOps = new LongAdder();
 
     @Setup
     public void setUp() {
@@ -82,6 +85,7 @@ public class TrainTestCS extends HazelcastTest {
             return trainDto.get(ts.randomKey());
         } catch (RuntimeException e) {
             if (shouldIgnore(e)) {
+                ignoredGetOps.increment();
                 return null;
             }
             throw e;
@@ -104,6 +108,7 @@ public class TrainTestCS extends HazelcastTest {
             if (!shouldIgnore(e)) {
                 throw e;
             }
+            ignoredSetOps.increment();
         }
     }
 
@@ -117,6 +122,7 @@ public class TrainTestCS extends HazelcastTest {
             if (!shouldIgnore(e)) {
                 throw e;
             }
+            ignoredSetNewOps.increment();
         }
     }
 
@@ -292,6 +298,10 @@ public class TrainTestCS extends HazelcastTest {
         long expected = setNewOps.sum();
         int actual = trainDto.keySet(Predicates.like("__key", setNewKeyPrefixBase + "%")).size();
         assertEquals("setNew key count mismatch for " + setNewKeyPrefixBase, expected, actual);
+        if (ignoredGetOps.sum() > 0 || ignoredSetOps.sum() > 0 || ignoredSetNewOps.sum() > 0) {
+            logger.info("ignoredOps: get={}, set={}, setNew={}",
+                    ignoredGetOps.sum(), ignoredSetOps.sum(), ignoredSetNewOps.sum());
+        }
     }
 
     private String resolveWorkerId() {
